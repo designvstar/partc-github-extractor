@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         ScienceDirect Part C GitHub Extractor
-// @namespace    https://local.partc.github/
-// @version      1.5.12
-// @description  Part C GitHub extractor — search pages only; minimizable panel
-// @author       local
+// @namespace    https://github.com/designvstar/partc-github-extractor
+// @version      1.5.13
+// @description  Part C search: extract GitHub links from abstracts; merge to local MD
+// @author       designvstar
 // @match        *://www.sciencedirect.com/search*
 // @match        *://www.sciencedirect.com/*/search*
 // @match        *://*.sciencedirect.com/search*
@@ -12,11 +12,16 @@
 // @grant        window.onurlchange
 // @grant        unsafeWindow
 // @run-at       document-end
+// @updateURL    https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+// @supportURL   https://github.com/designvstar/partc-github-extractor
+// @homepageURL  https://github.com/designvstar/partc-github-extractor
 // ==/UserScript==
 
 /**
  * 仅在 ScienceDirect 检索页 (/search) 运行，不在 /science/article/ 论文页运行。
  * Edge 需开启「允许用户脚本」。MD：合并写入；翻页后可点「立即合并写入」恢复权限。
+ * 自动更新：油猴通过 @updateURL（jsDelivr）检测版本；每次发版请上调 @version。
  */
 (() => {
   "use strict";
@@ -1221,7 +1226,7 @@
     renderTable();
     updateBindLabel();
     resumeAutoIfNeeded();
-    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.12" });
+    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.13" });
   }
 
   function start() {

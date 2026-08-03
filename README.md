@@ -1,71 +1,98 @@
 # ScienceDirect Part C · GitHub 摘要提取
 
-在 [ScienceDirect](https://www.sciencedirect.com) 的 *Transportation Research Part C: Emerging Technologies* **检索页**中，展开摘要、提取含 GitHub 的论文，合并写入本地 Markdown。
+在 [ScienceDirect](https://www.sciencedirect.com) 的 *Transportation Research Part C* **检索页**中，展开摘要、提取含 GitHub 的论文，合并写入本地 Markdown。
 
 | 项目 | 说明 |
 | --- | --- |
-| 脚本文件 | `sciencedirect_partc_github_console.js` |
-| 当前版本 | **1.5.12** |
-| 运行方式 | [Tampermonkey / 篡改猴](https://www.tampermonkey.net/)（推荐 Edge / Chrome） |
+| 主脚本（油猴） | **`sciencedirect_partc_github.user.js`**（必须用 `.user.js` 后缀） |
+| 当前版本 | **1.5.13** |
+| 运行方式 | [Tampermonkey / 篡改猴](https://www.tampermonkey.net/) |
 | 仓库 | https://github.com/designvstar/partc-github-extractor |
 
 ---
 
-## 1. Edge 必开权限（否则「已启用但未执行」）
+## 1. Edge 必开权限
 
-油猴菜单若出现蓝条 **「请启用允许用户脚本」**，或 **「此脚本还未被执行」** / **「没有访问此页面的权限」**：
-
-1. 打开 `edge://extensions`
-2. **篡改猴** → **详细信息**
-3. 打开 **允许用户脚本**
-4. **网站访问权限** → **在所有站点上**（不要「单击时」）
-5. 关掉 ScienceDirect 标签再重新打开（或 `Ctrl+F5`）
-
-未开「允许用户脚本」时，脚本开关是绿色也**不会执行**。
+1. `edge://extensions` → **篡改猴** → **详细信息**
+2. 打开 **允许用户脚本**
+3. **网站访问权限** → **在所有站点上**
+4. 重开 ScienceDirect 检索页标签
 
 ---
 
-## 2. 安装 / 更新
+## 2. 安装脚本
 
-1. 安装 Tampermonkey  
-2. 完成上一节权限  
-3. 油猴 → **实用工具** → **从文件安装**，选择本仓库的 `.js`  
-   或：新建脚本 → 粘贴全文 → 保存  
-4. 确认脚本头为 `@version 1.5.12`  
-5. 打开 **检索页**（URL 含 `/search`），右下角应出现面板  
+### 方式 A：从 GitHub Raw / jsDelivr 安装（推荐，可自动更新）
 
-**不会**在论文详情页运行，例如：  
-`https://www.sciencedirect.com/science/article/pii/...`
+在浏览器打开（任选其一，国内优先 jsDelivr）：
 
-更新：用新文件覆盖油猴脚本内容并保存，然后刷新检索页。
+```text
+https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+```
 
----
+或：
 
-## 3. 功能概览
+```text
+https://raw.githubusercontent.com/designvstar/partc-github-extractor/main/sciencedirect_partc_github.user.js
+```
 
-- **仅 `/search` 检索页**生效（`@match` + 运行时校验；排除 `/science/article/`）  
-- 扫描结果卡片摘要中的 `github.com/...` 链接  
-- **硬翻页**：按 `offset` / `show` 整页跳转，油猴自动再注入并续跑  
-- 翻页后先等页面加载、结果稳定，再静置约 **8 秒** 后扫描  
-- **单路扫描**：扫描锁 / 续跑锁，避免翻页后重复来回扫  
-- 面板：拖动标题栏；右下角或 **+/−/重置** 调窗口宽高；**「—」最小化 / 「▢」还原**  
-- Markdown：**合并去重**（保留旧记录 + 文末「本次新增」）  
-- **清空面板**：只清界面，不改本地 MD  
-- 翻页后若暂时无法写文件：结果暂存浏览器，点 **「立即合并写入」** 恢复权限  
+油猴会弹出安装页 → **安装**。
 
-### 关于 `offset`
+### 方式 B：本地文件安装
 
-例如 `show=50&offset=250`：每页 50 条，跳过前 250 条（约第 6 页）。面板只显示当前 offset/show，不作跳转按钮。
+油猴 → **实用工具** → **从文件安装** → 选择仓库里的 `sciencedirect_partc_github.user.js`。
+
+安装后确认 `@version` 为 **1.5.13**，且仅在 URL 含 `/search` 的页面出现面板（不含 `/science/article/` 论文页）。
 
 ---
 
-## 4. 推荐使用流程
+## 3. 绑定仓库自动更新（Tampermonkey）
 
-1. 打开 Part C 检索页，确认能看到论文列表  
-2. **绑定本地 MD**（打开已有文件可合并旧数据）  
-3. **扫描本页**，或 **自动翻页扫描**（输入页数）  
-4. 若提示权限：点一次 **立即合并写入**  
-5. 需要时 **复制表格** / **下载 MD**；不看面板时点标题栏 **「—」** 最小化  
+脚本头部已包含：
+
+```js
+// @version      1.5.13
+// @updateURL    https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+```
+
+### 油猴界面
+
+1. 打开该脚本 → **设置**
+2. 勾选 **检查更新**
+3. **更新 URL** 填入上面的 jsDelivr 地址（或 Raw 地址）
+4. **保存** → 可点 **检查用户脚本的更新** 测试
+
+> 更新 URL 必须是 **源码直链**，不能是仓库主页或 Release 页。
+
+### 国内访问
+
+`raw.githubusercontent.com` 常不稳定，**推荐 jsDelivr**：
+
+```text
+https://cdn.jsdelivr.net/gh/designvstar/partc-github-extractor@main/sciencedirect_partc_github.user.js
+```
+
+### 发版流程（维护者）
+
+1. 改代码  
+2. **上调** `@version`（如 `1.5.13` → `1.5.14`），版本不变则油猴认为无更新  
+3. `git push` 到 `main`（仓库需公开）  
+4. 油猴定时拉取；或手动「检查更新」  
+
+jsDelivr 有短缓存，刚 push 后若检测不到，等一两分钟或换 Raw 测一次。
+
+---
+
+## 4. 功能概览
+
+- 仅 `/search` 检索页；排除论文详情页  
+- 摘要中提取 GitHub 链接；硬翻页自动续跑  
+- 翻页后等结果稳定再静置约 8 秒再扫；单路扫描锁防来回扫  
+- 面板：拖动、+/− 改窗口大小、「—」最小化  
+- MD 合并去重写入；清空面板不改 MD；翻页后可点「立即合并写入」恢复权限  
+
+`offset` / `show`：分页参数（如 `offset=250&show=50` 表示约第 6 页），面板仅显示状态。
 
 ---
 
@@ -73,41 +100,28 @@
 
 | 按钮 | 作用 |
 | --- | --- |
-| — / ▢（标题栏） | 最小化 / 还原面板 |
-| +/− / 重置 | 放大、缩小、重置**窗口尺寸**（不改字号） |
-| 绑定本地 MD | 打开已有 md 或新建 |
-| 立即合并写入 | 合并写回 md；翻页后也可用来恢复文件权限 |
-| 下载 MD | 下载到浏览器下载目录 |
-| 解绑 | 清除本地文件句柄绑定 |
-| 扫描本页 | 展开摘要并提取 GitHub |
-| 自动翻页扫描 | 从当前页起连续硬翻页扫描 |
-| 继续自动翻页 | 验证码或中断后继续 |
-| 复制表格 | 复制为可粘贴到 Excel 的文本 |
-| 清空面板 | 只清空面板显示，不改 MD |
+| — / ▢ | 最小化 / 还原 |
+| +/− / 重置 | 调整窗口宽高 |
+| 绑定本地 MD | 打开或新建 md |
+| 立即合并写入 | 合并写回；也可恢复文件权限 |
+| 下载 MD / 解绑 | 下载或解除绑定 |
+| 扫描本页 / 自动翻页扫描 / 继续自动翻页 | 扫描与续跑 |
+| 复制表格 / 清空面板 | 复制；清空仅界面 |
 
 ---
 
-## 6. Markdown 输出格式
+## 6. 推送更新到 GitHub
 
-```markdown
-# Transportation Research Part C · GitHub 论文汇总
+```powershell
+Set-Location -LiteralPath "C:\Users\yang'wen'qi\Desktop\script"
 
-- 最近更新: ...
-- 累计条目: N
-- 写入模式: 合并去重（保留旧记录）+ 文末追加本次新增
-
-## 全部结果（合并表）
-
-| # | 论文名称 | 论文链接 | GitHub代码链接 |
-| --- | --- | --- | --- |
-| 1 | ... | https://www.sciencedirect.com/... | https://github.com/... |
-
-## 本次新增（...，+k）
-
-| # | 论文名称 | 论文链接 | GitHub代码链接 |
-| --- | --- | --- | --- |
-| 1 | ... | ... | ... |
+git add README.md sciencedirect_partc_github.user.js
+git add -u sciencedirect_partc_github_console.js
+git commit -m "Add .user.js with jsDelivr @updateURL for Tampermonkey auto-update (v1.5.13)"
+git push origin main
 ```
+
+若已删除旧的 `sciencedirect_partc_github_console.js`，用 `git add -A` 时注意不要提交 `__pycache__/`。
 
 ---
 
@@ -115,24 +129,7 @@
 
 | 现象 | 处理 |
 | --- | --- |
-| 此脚本还未被执行 | 打开 Edge「允许用户脚本」+「在所有站点上」，重开标签 |
-| 没有访问此页面的权限 | 同上；点一次油猴图标后再刷新 |
-| 论文详情页没有面板 | 正常：脚本只匹配 `/search` |
-| 翻页后又提示未绑定 MD | ≥1.5.7：点「立即合并写入」恢复权限 |
-| 翻页后扫描来回乱跳 | ≥1.5.11：已加单路扫描锁 |
-| Console 里 preload / Adobe | 站点日志，可忽略；过滤 `PartC` 看脚本日志 |
-
----
-
-## 8. 推送更新到 GitHub
-
-```powershell
-Set-Location -LiteralPath "C:\Users\yang'wen'qi\Desktop\script"
-
-git add README.md sciencedirect_partc_github_console.js
-git commit -m "Update to v1.5.12: minimize panel, scan locks, search-only match"
-git push origin main
-```
-
-远程：`https://github.com/designvstar/partc-github-extractor.git`  
-不要提交 `__pycache__/`。
+| 黄色警告：没有有效更新链接 | 填写 Raw/jsDelivr 直链并保存 |
+| 检查更新失败 | 换 jsDelivr；确认仓库公开、分支为 `main` |
+| 推送后不更新 | 必须上调 `@version`；等待 CDN 缓存 |
+| 论文页没有面板 | 正常，仅 search 页运行 |
