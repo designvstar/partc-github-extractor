@@ -1,23 +1,44 @@
 // ==UserScript==
 // @name         ScienceDirect Part C GitHub Extractor
 // @namespace    https://local.partc.github/
-// @version      1.5.9
-// @description  Part C GitHub extractor (Tampermonkey). Requires Edge "Allow user scripts".
+// @version      1.5.12
+// @description  Part C GitHub extractor — search pages only; minimizable panel
 // @author       local
-// @match        *://www.sciencedirect.com/*
-// @match        *://*.sciencedirect.com/*
-// @match        https://www.sciencedirect.com/search*
+// @match        *://www.sciencedirect.com/search*
+// @match        *://www.sciencedirect.com/*/search*
+// @match        *://*.sciencedirect.com/search*
+// @exclude      *://www.sciencedirect.com/science/article/*
+// @exclude      *://*.sciencedirect.com/science/article/*
 // @grant        window.onurlchange
 // @grant        unsafeWindow
 // @run-at       document-end
 // ==/UserScript==
 
 /**
- * 推荐：用油猴安装本脚本（翻页/刷新后会自动再注入）。
- * MD：写入前先读旧文件 → 合并去重 → 写回完整表，并在文末追加「本次新增」。
+ * 仅在 ScienceDirect 检索页 (/search) 运行，不在 /science/article/ 论文页运行。
+ * Edge 需开启「允许用户脚本」。MD：合并写入；翻页后可点「立即合并写入」恢复权限。
  */
 (() => {
   "use strict";
+
+  function isSearchPage() {
+    try {
+      const path = location.pathname || "";
+      // /search 或 /xxx/search ，排除论文详情
+      if (/\/science\/article\//i.test(path)) return false;
+      return /\/search\/?$/i.test(path) || /\/search\?/i.test(location.href) || /\/search$/i.test(path);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  if (!isSearchPage()) {
+    try {
+      console.info("[PartC GitHub] skip non-search page", location.href);
+    } catch (_) {}
+    return;
+  }
+
   try {
     console.info("[PartC GitHub] script start", location.href, "GM_info=", typeof GM_info);
   } catch (_) {}
@@ -43,6 +64,10 @@
   let mdPermissionOk = false;
   /** 最近一次相对文件的新增条数 */
   let lastAppended = 0;
+  /** 防止同页并行扫描 / 重复续跑 */
+  let scanning = false;
+  let autoResuming = false;
+  let bootStarted = false;
 
   if (!/sciencedirect\.com/i.test(location.hostname)) {
     alert("请在 www.sciencedirect.com 检索页运行");
@@ -600,62 +625,75 @@
   }
 
   async function scanCurrentPage(opts = {}) {
-    const fromAuto = !!opts.fromAuto;
-    const wait = await waitForResults(fromAuto ? 150000 : 90000, {
-      settleMs: fromAuto ? 8000 : 1500,
-      afterReadyPauseMs: fromAuto ? 2000 : 800,
-      stableRounds: fromAuto ? 5 : 3,
-    });
-    if (wait === "captcha") {
-      setStatus("检测到人机验证，请先完成验证再扫描。", "warn");
-      return { added: 0, scanned: 0 };
+    if (scanning) {
+      console.info("[PartC GitHub] skip scan: already scanning");
+      return { added: 0, scanned: 0, skipped: true };
     }
-    if (wait === "timeout") {
-      setStatus("等待结果列表超时（页面可能未刷完或被拦截）。", "warn");
-      return { added: 0, scanned: 0 };
-    }
-    await ensureMdReadyForScan();
-
-    const cards = resultCards();
-    setStatus(`开始扫描本页 ${cards.length} 条…`);
-    let added = 0;
-    for (let i = 0; i < cards.length; i++) {
-      const card = cards[i];
-      const a = titleLinkOf(card);
-      if (!a) continue;
-      const title = (a.textContent || "").trim();
-      const paperUrl = a.href || "";
-      await expandAbstract(card);
-      const text = abstractText(card);
-      const ghs = extractGithub(text);
-      setStatus(`扫描 ${i + 1}/${cards.length} · ${title.slice(0, 55)}`);
-      for (const gh of ghs) {
-        if (
-          pushHit({
-            title,
-            paperUrl,
-            githubUrl: gh,
-            pageOffset: String(currentOffset()),
-            snippet: text.replace(/\s+/g, " ").slice(0, 220),
-          })
-        )
-          added++;
+    scanning = true;
+    try {
+      const fromAuto = !!opts.fromAuto;
+      const wait = await waitForResults(fromAuto ? 150000 : 90000, {
+        settleMs: fromAuto ? 8000 : 1500,
+        afterReadyPauseMs: fromAuto ? 2000 : 800,
+        stableRounds: fromAuto ? 5 : 3,
+      });
+      if (wait === "captcha") {
+        setStatus("检测到人机验证，请先完成验证再扫描。", "warn");
+        return { added: 0, scanned: 0 };
       }
-      await sleep(250);
+      if (wait === "timeout") {
+        setStatus("等待结果列表超时（页面可能未刷完或被拦截）。", "warn");
+        return { added: 0, scanned: 0 };
+      }
+      await ensureMdReadyForScan();
+
+      const cards = resultCards();
+      setStatus(`开始扫描本页 ${cards.length} 条…`);
+      let added = 0;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const a = titleLinkOf(card);
+        if (!a) continue;
+        const title = (a.textContent || "").trim();
+        const paperUrl = a.href || "";
+        await expandAbstract(card);
+        const text = abstractText(card);
+        const ghs = extractGithub(text);
+        setStatus(`扫描 ${i + 1}/${cards.length} · ${title.slice(0, 55)}`);
+        for (const gh of ghs) {
+          if (
+            pushHit({
+              title,
+              paperUrl,
+              githubUrl: gh,
+              pageOffset: String(currentOffset()),
+              snippet: text.replace(/\s+/g, " ").slice(0, 220),
+            })
+          )
+            added++;
+        }
+        await sleep(250);
+      }
+      await saveHits({ forceDownload: !mdHandle && !wasMdBound(), warn: true });
+      backupHitsToStorage();
+      const where = mdHandle && mdPermissionOk
+        ? `已合并写入 ${mdFileName || "本地 MD"}（本页新命中 ${added}，累计 ${hits.length}，文件新增 ${lastAppended}）`
+        : mdHandle
+          ? `已暂存累计 ${hits.length} 条（待点「立即合并写入」写回 MD）`
+          : "已触发 MD 下载或仅内存";
+      setStatus(`本页完成：${cards.length} 篇。${where}`);
+      return { added, scanned: cards.length };
+    } finally {
+      scanning = false;
     }
-    await saveHits({ forceDownload: !mdHandle && !wasMdBound(), warn: true });
-    backupHitsToStorage();
-    const where = mdHandle && mdPermissionOk
-      ? `已合并写入 ${mdFileName || "本地 MD"}（本页新命中 ${added}，累计 ${hits.length}，文件新增 ${lastAppended}）`
-      : mdHandle
-        ? `已暂存累计 ${hits.length} 条（待点「立即合并写入」写回 MD）`
-        : "已触发 MD 下载或仅内存";
-    setStatus(`本页完成：${cards.length} 篇。${where}`);
-    return { added, scanned: cards.length };
   }
 
   /** 油猴：整页跳转翻页（脚本会自动再注入） */
   async function autoNextPagesHard(n) {
+    if (scanning || autoResuming) {
+      setStatus("已有扫描/翻页任务在进行，请等待完成。", "warn");
+      return;
+    }
     const maxPages = Math.max(1, Number(n) || 1);
     await ensureMdReadyForScan();
     if (!mdHandle && !wasMdBound()) {
@@ -686,6 +724,10 @@
   }
 
   async function resumeAutoIfNeeded() {
+    if (autoResuming || scanning) {
+      console.info("[PartC GitHub] skip resume: busy");
+      return;
+    }
     let st;
     try {
       st = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
@@ -694,26 +736,44 @@
     }
     if (!st || !st.active) return;
 
-    setStatus(`翻页后续跑：先等新页面刷完再扫描（剩余 ${st.remaining} 页）…`);
-    await sleep(2500);
-    if (looksLikeCaptcha()) {
-      setStatus("请完成人机验证后，再点「继续自动翻页」。", "warn");
-      return;
-    }
+    // 同一页（同 offset + remaining）只续跑一次，防止 scheduleStart 多次触发
+    const gateKey = `sd_partc_resume_gate_${currentOffset()}_${st.remaining}`;
+    try {
+      if (sessionStorage.getItem(gateKey) === "1") {
+        console.info("[PartC GitHub] skip resume: gate", gateKey);
+        return;
+      }
+      sessionStorage.setItem(gateKey, "1");
+    } catch (_) {}
 
-    await scanCurrentPage({ fromAuto: true });
-    backupHitsToStorage();
-    st.remaining -= 1;
-    if (st.remaining <= 0) {
-      localStorage.removeItem(STATE_KEY);
-      setStatus(`自动翻页完成。累计 ${hits.length} 条。`);
-      return;
+    autoResuming = true;
+    try {
+      setStatus(`翻页后续跑：先等新页面刷完再扫描（剩余 ${st.remaining} 页）…`);
+      await sleep(2500);
+      if (looksLikeCaptcha()) {
+        setStatus("请完成人机验证后，再点「继续自动翻页」。", "warn");
+        try {
+          sessionStorage.removeItem(gateKey);
+        } catch (_) {}
+        return;
+      }
+
+      await scanCurrentPage({ fromAuto: true });
+      backupHitsToStorage();
+      st.remaining -= 1;
+      if (st.remaining <= 0) {
+        localStorage.removeItem(STATE_KEY);
+        setStatus(`自动翻页完成。累计 ${hits.length} 条。`);
+        return;
+      }
+      localStorage.setItem(STATE_KEY, JSON.stringify(st));
+      const next = urlWithOffset(currentOffset() + (st.show || currentShow()));
+      setStatus(`本页已扫完，即将翻页 → offset=${currentOffset() + (st.show || currentShow())}`);
+      await sleep(1000);
+      location.href = next;
+    } finally {
+      autoResuming = false;
     }
-    localStorage.setItem(STATE_KEY, JSON.stringify(st));
-    const next = urlWithOffset(currentOffset() + (st.show || currentShow()));
-    setStatus(`本页已扫完，即将翻页 → offset=${currentOffset() + (st.show || currentShow())}`);
-    await sleep(1000);
-    location.href = next;
   }
 
   async function autoNextPages(n) {
@@ -794,13 +854,15 @@
   }
   function savePanelGeom(panel) {
     const r = panel.getBoundingClientRect();
+    const minimized = panel.classList.contains("minimized");
     localStorage.setItem(
       PANEL_POS_KEY,
       JSON.stringify({
         left: r.left,
         top: r.top,
-        width: r.width,
-        height: r.height,
+        width: minimized ? Number(panel.dataset.restoreW || r.width) : r.width,
+        height: minimized ? Number(panel.dataset.restoreH || 420) : r.height,
+        minimized: !!minimized,
       })
     );
   }
@@ -817,6 +879,7 @@
       panel.style.bottom = "12px";
       panel.style.width = Math.min(520, window.innerWidth - 24) + "px";
       panel.style.height = Math.min(520, window.innerHeight - 24) + "px";
+      panel.classList.remove("minimized");
     };
     if (g && Number.isFinite(g.left) && Number.isFinite(g.top)) {
       const w = Math.max(280, g.width || 420);
@@ -831,6 +894,13 @@
       panel.style.top = Math.max(0, top) + "px";
       panel.style.width = Math.min(w, window.innerWidth - 20) + "px";
       panel.style.height = Math.min(h, window.innerHeight - 20) + "px";
+      panel.dataset.restoreW = String(w);
+      panel.dataset.restoreH = String(h);
+      if (g.minimized) {
+        panel.classList.add("minimized");
+        const btn = panel.querySelector("#sd-partc-min");
+        if (btn) btn.textContent = "▢";
+      }
     } else {
       placeDefault();
     }
@@ -957,13 +1027,36 @@
       const r = panel.getBoundingClientRect();
       label.textContent = `${Math.round(r.width)}×${Math.round(r.height)}`;
     }
+
+    const minBtn = panel.querySelector("#sd-partc-min");
+    if (minBtn) {
+      minBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const minimized = panel.classList.toggle("minimized");
+        if (minimized) {
+          const r = panel.getBoundingClientRect();
+          panel.dataset.restoreW = String(Math.round(r.width));
+          panel.dataset.restoreH = String(Math.round(r.height));
+          minBtn.textContent = "▢";
+          minBtn.title = "还原面板";
+        } else {
+          const w = Number(panel.dataset.restoreW || 520);
+          const h = Number(panel.dataset.restoreH || 520);
+          panel.style.width = Math.max(280, w) + "px";
+          panel.style.height = Math.max(200, h) + "px";
+          minBtn.textContent = "—";
+          minBtn.title = "最小化面板";
+          if (label) label.textContent = `${Math.round(w)}×${Math.round(h)}`;
+        }
+        savePanelGeom(panel);
+      });
+    }
   }
 
   async function boot() {
     if (document.getElementById("sd-partc-gh-panel")) {
-      // 已挂载则只续跑自动翻页，避免重复创建
+      // 面板已在：不再重复 resume，避免 0/1.5/4s 多次启动导致来回扫
       updateModeLabel();
-      resumeAutoIfNeeded();
       return;
     }
     const css = document.createElement("style");
@@ -1012,6 +1105,26 @@
         background:linear-gradient(135deg, transparent 50%, #6b7280 50%);
         border-radius:0 0 8px 0;
       }
+      #sd-partc-gh-panel.minimized{
+        height:auto !important;
+        min-height:0 !important;
+        width:auto !important;
+        min-width:200px;
+      }
+      #sd-partc-gh-panel.minimized #sd-partc-body,
+      #sd-partc-gh-panel.minimized #sd-partc-resize,
+      #sd-partc-gh-panel.minimized #sd-partc-size-out,
+      #sd-partc-gh-panel.minimized #sd-partc-size-in,
+      #sd-partc-gh-panel.minimized #sd-partc-size-reset,
+      #sd-partc-gh-panel.minimized #sd-partc-size-label{
+        display:none !important;
+      }
+      #sd-partc-gh-panel.minimized #sd-partc-drag{
+        border-bottom:0;
+      }
+      #sd-partc-min{
+        background:#1d4ed8 !important;
+      }
     `;
     document.documentElement.appendChild(css);
     const panel = document.createElement("div");
@@ -1024,10 +1137,11 @@
         <span id="sd-partc-size-label" style="color:#9ca3af;font-size:12px;min-width:64px;text-align:center">520×520</span>
         <button type="button" id="sd-partc-size-in" title="放大窗口">+</button>
         <button type="button" id="sd-partc-size-reset" title="重置窗口大小">重置</button>
+        <button type="button" id="sd-partc-min" title="最小化/还原">—</button>
       </div>
     </div>
     <div id="sd-partc-body">
-      <div class="meta">拖动标题栏移动 · 右下角或 +/− 调整窗口大小</div>
+      <div class="meta">拖动标题栏移动 · 右下角或 +/− 调窗口大小 · 「—」最小化</div>
       <div class="meta">当前页 offset=<b id="sd-partc-off">${currentOffset()}</b> · show=<b id="sd-partc-show">${currentShow()}</b></div>
       <div class="meta" id="sd-partc-mode"></div>
       <div class="meta" id="sd-partc-bind-label">本地文件: 未绑定</div>
@@ -1107,10 +1221,15 @@
     renderTable();
     updateBindLabel();
     resumeAutoIfNeeded();
-    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.9" });
+    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.12" });
   }
 
   function start() {
+    if (!isSearchPage()) {
+      const old = document.getElementById("sd-partc-gh-panel");
+      if (old) old.remove();
+      return;
+    }
     boot().catch((e) => {
       console.error("[PartC GitHub] boot failed", e);
       try {
@@ -1119,11 +1238,20 @@
     });
   }
 
-  // 多时机尝试，避免页面晚加载导致“已启用未执行”
+  // 只调度一次挂载；面板未出现时才短重试（不会重复 resume）
   function scheduleStart() {
-    start();
-    setTimeout(start, 1500);
-    setTimeout(start, 4000);
+    if (!isSearchPage()) return;
+    if (bootStarted) return;
+    bootStarted = true;
+
+    const tryBoot = () => {
+      if (!isSearchPage()) return;
+      if (document.getElementById("sd-partc-gh-panel")) return;
+      start();
+    };
+    tryBoot();
+    setTimeout(tryBoot, 1500);
+    setTimeout(tryBoot, 4000);
   }
 
   if (document.readyState === "loading") {
@@ -1132,11 +1260,24 @@
     scheduleStart();
   }
 
-  // SPA 改 URL 时重新挂载（油猴 window.onurlchange）
+  // SPA 改 URL：离开 search 卸面板；自动硬翻页进行中不重复 schedule（整页刷新会重新注入）
   try {
     if (typeof window.onurlchange !== "undefined") {
       window.addEventListener("urlchange", () => {
         console.info("[PartC GitHub] urlchange", location.href);
+        if (!isSearchPage()) {
+          const old = document.getElementById("sd-partc-gh-panel");
+          if (old) old.remove();
+          return;
+        }
+        try {
+          const st = JSON.parse(localStorage.getItem(STATE_KEY) || "null");
+          if (st && st.active) {
+            console.info("[PartC GitHub] urlchange ignored during auto-flip");
+            return;
+          }
+        } catch (_) {}
+        bootStarted = false;
         scheduleStart();
       });
     }

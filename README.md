@@ -1,11 +1,11 @@
 # ScienceDirect Part C · GitHub 摘要提取
 
-在 [ScienceDirect](https://www.sciencedirect.com) 的 *Transportation Research Part C: Emerging Technologies* 检索结果中，展开摘要、提取含 GitHub 的论文，合并写入本地 Markdown。
+在 [ScienceDirect](https://www.sciencedirect.com) 的 *Transportation Research Part C: Emerging Technologies* **检索页**中，展开摘要、提取含 GitHub 的论文，合并写入本地 Markdown。
 
 | 项目 | 说明 |
 | --- | --- |
 | 脚本文件 | `sciencedirect_partc_github_console.js` |
-| 当前版本 | **1.5.7** |
+| 当前版本 | **1.5.12** |
 | 运行方式 | [Tampermonkey / 篡改猴](https://www.tampermonkey.net/)（推荐 Edge / Chrome） |
 | 仓库 | https://github.com/designvstar/partc-github-extractor |
 
@@ -31,35 +31,41 @@
 2. 完成上一节权限  
 3. 油猴 → **实用工具** → **从文件安装**，选择本仓库的 `.js`  
    或：新建脚本 → 粘贴全文 → 保存  
-4. 确认脚本头为 `@version 1.5.7`  
-5. 打开任意 ScienceDirect 检索页，右下角应出现面板  
+4. 确认脚本头为 `@version 1.5.12`  
+5. 打开 **检索页**（URL 含 `/search`），右下角应出现面板  
 
-更新时：用新文件覆盖油猴中的脚本内容并保存，然后刷新页面。
+**不会**在论文详情页运行，例如：  
+`https://www.sciencedirect.com/science/article/pii/...`
+
+更新：用新文件覆盖油猴脚本内容并保存，然后刷新检索页。
 
 ---
 
 ## 3. 功能概览
 
+- **仅 `/search` 检索页**生效（`@match` + 运行时校验；排除 `/science/article/`）  
 - 扫描结果卡片摘要中的 `github.com/...` 链接  
-- **硬翻页**：按 URL 的 `offset` / `show` 整页跳转，油猴自动再注入并续跑  
-- 面板：**拖动**标题栏移动；**右下角拖拽**或标题栏 **+/−/重置** 调整**窗口宽高**（不缩放文字）  
-- Markdown：**合并去重写入**（保留旧记录 + 文末「本次新增」）  
-- **清空面板**：只清界面，**不改、不删**本地 MD  
-- 翻页后若暂时无法写文件：结果先暂存浏览器，点一次 **「立即合并写入」** 恢复权限（不再误报「未绑定」）
+- **硬翻页**：按 `offset` / `show` 整页跳转，油猴自动再注入并续跑  
+- 翻页后先等页面加载、结果稳定，再静置约 **8 秒** 后扫描  
+- **单路扫描**：扫描锁 / 续跑锁，避免翻页后重复来回扫  
+- 面板：拖动标题栏；右下角或 **+/−/重置** 调窗口宽高；**「—」最小化 / 「▢」还原**  
+- Markdown：**合并去重**（保留旧记录 + 文末「本次新增」）  
+- **清空面板**：只清界面，不改本地 MD  
+- 翻页后若暂时无法写文件：结果暂存浏览器，点 **「立即合并写入」** 恢复权限  
 
 ### 关于 `offset`
 
-检索 URL 里例如 `show=50&offset=250` 表示每页 50 条、跳过前 250 条（约第 6 页）。面板上会显示当前页的 offset/show，仅作状态提示。
+例如 `show=50&offset=250`：每页 50 条，跳过前 250 条（约第 6 页）。面板只显示当前 offset/show，不作跳转按钮。
 
 ---
 
 ## 4. 推荐使用流程
 
-1. 打开 Part C 检索页，确认能看到论文列表（若 403/验证码，先登录或完成验证）  
-2. **绑定本地 MD**（选「打开已有文件」可合并旧数据）  
+1. 打开 Part C 检索页，确认能看到论文列表  
+2. **绑定本地 MD**（打开已有文件可合并旧数据）  
 3. **扫描本页**，或 **自动翻页扫描**（输入页数）  
-4. 自动翻页过程中若提示权限：点一次 **立即合并写入**  
-5. 需要时 **复制表格** / **下载 MD**
+4. 若提示权限：点一次 **立即合并写入**  
+5. 需要时 **复制表格** / **下载 MD**；不看面板时点标题栏 **「—」** 最小化  
 
 ---
 
@@ -67,9 +73,11 @@
 
 | 按钮 | 作用 |
 | --- | --- |
-| 绑定本地 MD | 打开已有 md 或新建；油猴下通过页面 `window` 调起文件选择 |
-| 立即合并写入 | 读旧文件 → 去重合并 → 写回；也可用于翻页后恢复文件权限 |
-| 下载 MD | 下载到浏览器「下载」目录 |
+| — / ▢（标题栏） | 最小化 / 还原面板 |
+| +/− / 重置 | 放大、缩小、重置**窗口尺寸**（不改字号） |
+| 绑定本地 MD | 打开已有 md 或新建 |
+| 立即合并写入 | 合并写回 md；翻页后也可用来恢复文件权限 |
+| 下载 MD | 下载到浏览器下载目录 |
 | 解绑 | 清除本地文件句柄绑定 |
 | 扫描本页 | 展开摘要并提取 GitHub |
 | 自动翻页扫描 | 从当前页起连续硬翻页扫描 |
@@ -102,3 +110,29 @@
 ```
 
 ---
+
+## 7. 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 此脚本还未被执行 | 打开 Edge「允许用户脚本」+「在所有站点上」，重开标签 |
+| 没有访问此页面的权限 | 同上；点一次油猴图标后再刷新 |
+| 论文详情页没有面板 | 正常：脚本只匹配 `/search` |
+| 翻页后又提示未绑定 MD | ≥1.5.7：点「立即合并写入」恢复权限 |
+| 翻页后扫描来回乱跳 | ≥1.5.11：已加单路扫描锁 |
+| Console 里 preload / Adobe | 站点日志，可忽略；过滤 `PartC` 看脚本日志 |
+
+---
+
+## 8. 推送更新到 GitHub
+
+```powershell
+Set-Location -LiteralPath "C:\Users\yang'wen'qi\Desktop\script"
+
+git add README.md sciencedirect_partc_github_console.js
+git commit -m "Update to v1.5.12: minimize panel, scan locks, search-only match"
+git push origin main
+```
+
+远程：`https://github.com/designvstar/partc-github-extractor.git`  
+不要提交 `__pycache__/`。
