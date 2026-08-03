@@ -109,27 +109,3 @@ jsDelivr 有短缓存，刚 push 后若检测不到，等一两分钟或换 Raw 
 | 复制表格 / 清空面板 | 复制；清空仅界面 |
 
 ---
-
-## 6. 推送更新到 GitHub
-
-```powershell
-Set-Location -LiteralPath "C:\Users\yang'wen'qi\Desktop\script"
-
-git add README.md sciencedirect_partc_github.user.js
-git add -u sciencedirect_partc_github_console.js
-git commit -m "Add .user.js with jsDelivr @updateURL for Tampermonkey auto-update (v1.5.13)"
-git push origin main
-```
-
-若已删除旧的 `sciencedirect_partc_github_console.js`，用 `git add -A` 时注意不要提交 `__pycache__/`。
-
----
-
-## 7. 常见问题
-
-| 现象 | 处理 |
-| --- | --- |
-| 黄色警告：没有有效更新链接 | 填写 Raw/jsDelivr 直链并保存 |
-| 检查更新失败 | 换 jsDelivr；确认仓库公开、分支为 `main` |
-| 推送后不更新 | 必须上调 `@version`；等待 CDN 缓存 |
-| 论文页没有面板 | 正常，仅 search 页运行 |
