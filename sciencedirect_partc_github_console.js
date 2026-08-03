@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ScienceDirect Part C GitHub Extractor
 // @namespace    https://local.partc.github/
-// @version      1.5.7
+// @version      1.5.9
 // @description  Part C GitHub extractor (Tampermonkey). Requires Edge "Allow user scripts".
 // @author       local
 // @match        *://www.sciencedirect.com/*
@@ -521,14 +521,61 @@
     setStatus("已解除本地 MD 绑定。");
   }
 
-  async function waitForResults(timeoutMs = 60000) {
+  async function waitForDocumentReady(timeoutMs = 30000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      if (looksLikeCaptcha()) return "captcha";
-      if (resultCards().length > 0) return "ok";
-      await sleep(500);
+      if (document.readyState === "complete") return true;
+      await sleep(200);
     }
-    return "timeout";
+    return document.readyState === "complete" || document.readyState === "interactive";
+  }
+
+  /**
+   * 翻页后等待：文档加载完 → 结果列表出现 → 条数稳定 → 再静置一会再扫描。
+   */
+  async function waitForResults(timeoutMs = 120000, opts = {}) {
+    const settleMs = opts.settleMs != null ? opts.settleMs : 2500;
+    const stableRounds = opts.stableRounds != null ? opts.stableRounds : 4;
+    const stableGapMs = opts.stableGapMs != null ? opts.stableGapMs : 800;
+    const afterReadyPauseMs = opts.afterReadyPauseMs != null ? opts.afterReadyPauseMs : 1500;
+
+    setStatus("等待页面加载完成…");
+    await waitForDocumentReady(Math.min(30000, timeoutMs));
+    await sleep(afterReadyPauseMs);
+
+    const start = Date.now();
+    let lastCount = -1;
+    let stable = 0;
+
+    while (Date.now() - start < timeoutMs) {
+      if (looksLikeCaptcha()) return "captcha";
+
+      const n = resultCards().length;
+      setStatus(`等待检索结果加载… 当前 ${n} 条（稳定后再扫描）`);
+
+      if (n > 0) {
+        if (n === lastCount) {
+          stable += 1;
+          if (stable >= stableRounds) {
+            setStatus(`结果已稳定（${n} 条），再静置 ${Math.round(settleMs / 1000)} 秒后开始扫描…`);
+            await sleep(settleMs);
+            if (looksLikeCaptcha()) return "captcha";
+            if (resultCards().length > 0) return "ok";
+            stable = 0;
+            lastCount = -1;
+            continue;
+          }
+        } else {
+          stable = 0;
+          lastCount = n;
+        }
+      } else {
+        stable = 0;
+        lastCount = -1;
+      }
+      await sleep(stableGapMs);
+    }
+    return resultCards().length > 0 ? "ok" : "timeout";
   }
 
   async function ensureMdReadyForScan() {
@@ -552,19 +599,25 @@
     return true; // 允许无 MD 继续扫
   }
 
-  async function scanCurrentPage() {
-    const wait = await waitForResults(60000);
+  async function scanCurrentPage(opts = {}) {
+    const fromAuto = !!opts.fromAuto;
+    const wait = await waitForResults(fromAuto ? 150000 : 90000, {
+      settleMs: fromAuto ? 8000 : 1500,
+      afterReadyPauseMs: fromAuto ? 2000 : 800,
+      stableRounds: fromAuto ? 5 : 3,
+    });
     if (wait === "captcha") {
       setStatus("检测到人机验证，请先完成验证再扫描。", "warn");
       return { added: 0, scanned: 0 };
     }
     if (wait === "timeout") {
-      setStatus("等待结果列表超时。", "warn");
+      setStatus("等待结果列表超时（页面可能未刷完或被拦截）。", "warn");
       return { added: 0, scanned: 0 };
     }
     await ensureMdReadyForScan();
 
     const cards = resultCards();
+    setStatus(`开始扫描本页 ${cards.length} 条…`);
     let added = 0;
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
@@ -609,7 +662,7 @@
       if (!confirm("未绑定 MD，仍继续自动翻页？")) return;
     }
 
-    await scanCurrentPage();
+    await scanCurrentPage({ fromAuto: true });
     backupHitsToStorage();
 
     if (maxPages <= 1) {
@@ -641,14 +694,14 @@
     }
     if (!st || !st.active) return;
 
-    setStatus(`油猴自动翻页续跑中，剩余 ${st.remaining} 页…`);
-    await sleep(1200);
+    setStatus(`翻页后续跑：先等新页面刷完再扫描（剩余 ${st.remaining} 页）…`);
+    await sleep(2500);
     if (looksLikeCaptcha()) {
       setStatus("请完成人机验证后，再点「继续自动翻页」。", "warn");
       return;
     }
 
-    await scanCurrentPage();
+    await scanCurrentPage({ fromAuto: true });
     backupHitsToStorage();
     st.remaining -= 1;
     if (st.remaining <= 0) {
@@ -658,8 +711,8 @@
     }
     localStorage.setItem(STATE_KEY, JSON.stringify(st));
     const next = urlWithOffset(currentOffset() + (st.show || currentShow()));
-    setStatus(`继续翻页 → ${next}`);
-    await sleep(600);
+    setStatus(`本页已扫完，即将翻页 → offset=${currentOffset() + (st.show || currentShow())}`);
+    await sleep(1000);
     location.href = next;
   }
 
@@ -1054,7 +1107,7 @@
     renderTable();
     updateBindLabel();
     resumeAutoIfNeeded();
-    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.7" });
+    console.info("[PartC GitHub] panel mounted", { IS_TM, version: "1.5.9" });
   }
 
   function start() {
